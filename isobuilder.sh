@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 
 # ISOBuilder: Advanced Linux Distribution Management Utility
-# Version: 0.0.1
-# Author: bo0urn3
+# Version: 4.2.0
+# Author: bo0urn3 (GitHub: q4n0, IG: onlybyhive)
+# License: MIT
 
 # Strict error handling and advanced debugging
 set -Eeuo pipefail
+trap 'log "Error occurred on line $LINENO."' ERR
 
 # Global variables for default directories and files
-ORIGINAL_ISO_DIR="original_iso"
+ORIGINAL_ISO=""
 CUSTOM_ISO_DIR="custom_iso"
 OUTPUT_ISO="custom_linux.iso"
 LOG_FILE="isobuilder.log"
+MOUNT_DIR="/mnt/iso_mount"
 
 # Logging function
 log() {
@@ -21,8 +24,7 @@ log() {
 # Validate dependencies
 validate_dependencies() {
     log "Validating dependencies..."
-    # Dependency checks
-    local dependencies=(genisoimage)
+    local dependencies=(genisoimage squashfs-tools rsync mount umount)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             log "Error: $dep is not installed. Exiting." >&2
@@ -32,6 +34,46 @@ validate_dependencies() {
     log "All dependencies are satisfied."
 }
 
+# Detect running OS
+check_os() {
+    log "Detecting running OS..."
+    local os_name=$(uname -s)
+    local os_version=""
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        os_name="$NAME"
+        os_version="$VERSION"
+    fi
+    log "Running OS: $os_name $os_version"
+}
+
+# Detect installation environment
+check_environment() {
+    log "Detecting installation environment..."
+    if grep -q hypervisor /proc/cpuinfo; then
+        if systemd-detect-virt -q --vmware; then
+            log "Environment: VMware"
+        elif systemd-detect-virt -q --oracle; then
+            log "Environment: VirtualBox"
+        else
+            log "Environment: Other Virtual Machine"
+        fi
+    else
+        log "Environment: Bare Metal"
+    fi
+}
+
+# Detect OS installation location
+check_install_location() {
+    log "Detecting OS installation location..."
+    local root_partition=$(findmnt -n / -o SOURCE)
+    if [ -n "$root_partition" ]; then
+        log "OS is installed on: $root_partition"
+    else
+        log "Error: Could not detect OS installation location."
+    fi
+}
+
 # Cleanup function
 cleanup() {
     log "Cleaning up intermediate files..."
@@ -39,27 +81,46 @@ cleanup() {
         rm -rf "$CUSTOM_ISO_DIR"
         log "Removed directory: $CUSTOM_ISO_DIR"
     fi
+    if mountpoint -q "$MOUNT_DIR"; then
+        umount "$MOUNT_DIR"
+        log "Unmounted directory: $MOUNT_DIR"
+    fi
+    if [ -d "$MOUNT_DIR" ]; then
+        rmdir "$MOUNT_DIR"
+        log "Removed mount directory: $MOUNT_DIR"
+    fi
+}
+
+# Mount and extract ISO
+extract_iso() {
+    log "Mounting and extracting original ISO..."
+    if [ -f "$ORIGINAL_ISO" ]; then
+        mkdir -p "$MOUNT_DIR"
+        mount -o loop "$ORIGINAL_ISO" "$MOUNT_DIR"
+        log "ISO mounted at $MOUNT_DIR."
+        rsync -a "$MOUNT_DIR"/ "$CUSTOM_ISO_DIR"/
+        umount "$MOUNT_DIR"
+        rmdir "$MOUNT_DIR"
+        log "Contents extracted to $CUSTOM_ISO_DIR."
+    else
+        log "Error: Original ISO file not found. Exiting." >&2
+        exit 1
+    fi
 }
 
 # Customize ISO
 customize_iso() {
     log "Customizing ISO..."
-
-    # Ensure the custom_iso directory exists
-    if [ -d "$CUSTOM_ISO_DIR" ]; then
-        log "Directory '$CUSTOM_ISO_DIR' exists. Proceeding."
-    else
-        log "Directory '$CUSTOM_ISO_DIR' not found. Creating it."
-        mkdir "$CUSTOM_ISO_DIR"
+    if [ ! -d "$CUSTOM_ISO_DIR" ]; then
+        mkdir -p "$CUSTOM_ISO_DIR"
+        log "Created directory: $CUSTOM_ISO_DIR"
     fi
 
-    # Copy contents from original_iso to custom_iso
-    if [ -d "$ORIGINAL_ISO_DIR" ]; then
-        cp -r "$ORIGINAL_ISO_DIR"/* "$CUSTOM_ISO_DIR"/
-        log "Contents copied from '$ORIGINAL_ISO_DIR' to '$CUSTOM_ISO_DIR'."
-    else
-        log "Error: '$ORIGINAL_ISO_DIR' directory does not exist. Exiting." >&2
-        exit 1
+    # Example customization: Add a preseed file
+    PRESEED_FILE="preseed.cfg"
+    if [ -f "$PRESEED_FILE" ]; then
+        cp "$PRESEED_FILE" "$CUSTOM_ISO_DIR"/
+        log "Added preseed file to ISO."
     fi
 
     log "ISO customization complete."
@@ -78,49 +139,63 @@ create_iso() {
     fi
 }
 
-# Argument parser
-parse_arguments() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --original)
-                ORIGINAL_ISO_DIR="$2"
-                shift 2
+# Interactive Menu
+interactive_menu() {
+    while true; do
+        clear
+        echo "============================="
+        echo "       ISO Builder Menu       "
+        echo "============================="
+        echo "1. Validate Dependencies"
+        echo "2. Detect System Information"
+        echo "3. Extract Original ISO"
+        echo "4. Customize ISO"
+        echo "5. Create Custom ISO"
+        echo "6. Cleanup"
+        echo "7. Exit"
+        echo "============================="
+        read -p "Select an option [1-7]: " choice
+
+        case $choice in
+            1)
+                validate_dependencies
                 ;;
-            --custom)
-                CUSTOM_ISO_DIR="$2"
-                shift 2
+            2)
+                check_os
+                check_environment
+                check_install_location
                 ;;
-            --output)
-                OUTPUT_ISO="$2"
-                shift 2
+            3)
+                read -p "Enter the path to the original ISO file: " ORIGINAL_ISO
+                extract_iso
                 ;;
-            --help|-h)
-                echo "Usage: $0 [--original <dir>] [--custom <dir>] [--output <file>]"
-                echo "  --original: Path to the original ISO directory (default: $ORIGINAL_ISO_DIR)"
-                echo "  --custom: Path to the custom ISO directory (default: $CUSTOM_ISO_DIR)"
-                echo "  --output: Name of the output ISO file (default: $OUTPUT_ISO)"
+            4)
+                customize_iso
+                ;;
+            5)
+                create_iso
+                ;;
+            6)
+                cleanup
+                ;;
+            7)
+                log "Exiting..."
                 exit 0
                 ;;
             *)
-                log "Unknown argument: $1" >&2
-                exit 1
+                echo "Invalid option. Please try again."
                 ;;
         esac
+
+        read -p "Press Enter to return to the menu..." _
     done
 }
 
 # Main execution flow
 main() {
     log "Starting ISO builder..."
-    validate_dependencies
-    customize_iso
-    create_iso
-    cleanup
-    log "ISO builder completed successfully."
+    interactive_menu
 }
-
-# Parse arguments
-parse_arguments "$@"
 
 # Execute main
 main
