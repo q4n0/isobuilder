@@ -1,99 +1,93 @@
-# Linux Advanced ISO Builder
+# Advanced Linux ISO Conversion Utility
 
 ## Overview
+An advanced, production-grade tool for converting Linux distributions to compressed, virtualization-ready ISOs with enhanced features.
 
-This utility provides a robust, production-grade solution for creating custom Linux live ISO images with advanced kernel management capabilities.
+## Creator
+- **Name:** b0urn3
+- **GitHub:** q4n0
+- **Instagram:** onlybyhive
 
 ## Features
-
-- **Dynamic Kernel Detection**: Automatically discovers and lists all available Linux kernels
-- **Interactive Kernel Selection**: Choose multiple kernels for inclusion in your custom ISO
-- **Comprehensive Package Customization**: Add or remove packages interactively
-- **Production-Grade Error Handling**: Strict error checking and detailed logging
-- **Flexible ISO Generation**: Support for multiple kernel versions and configurations
+- Multi-distribution support (Debian, Arch, Ubuntu, Fedora)
+- Advanced compression strategies
+- Virtualization platform conversion
+- Network boot configuration
+- Secure boot preparation
+- Machine learning-inspired compression optimization
 
 ## Prerequisites
-
-### System Requirements
-- Arch Linux or BlackArch Linux base system
-- Minimum 20GB free disk space
-- Root/sudo access
-
-### Required Packages
+### Required Dependencies
+- xorriso
 - squashfs-tools
-- libisoburn
-- grub
 - rsync
-- arch-install-scripts
-- pacman
+- qemu-utils
+- tar
+- xz-utils
+- openssl
+- gnupg
+
+### Supported Linux Distributions
+- Debian
+- Arch Linux
+- Ubuntu
+- Fedora
 
 ## Installation
 
-1. Clone the repository or download the script
-2. Make the script executable:
-   ```bash
-   chmod +x archisobuilder
-   ```
+### Manual Installation
+```bash
+# Clone the repository
+git clone https://github.com/q4n0/iso-converter.git
+
+# Make the script executable
+chmod +x iso-converter.sh
+
+# Optional: Install system-wide
+sudo mkdir -p /usr/local/bin
+sudo cp iso-converter.sh /usr/local/bin/iso-converter
+```
+
+### Dependency Installation
+```bash
+# Debian/Ubuntu
+sudo apt-get install xorriso squashfs-tools rsync qemu-utils tar xz-utils openssl gnupg
+
+# Arch Linux
+sudo pacman -S libisoburn squashfs-tools rsync qemu-img tar xz openssl gnupg
+```
 
 ## Usage
 
-### Basic Usage
+### Basic Conversion
 ```bash
-sudo ./archisobuilder
+# Standard Conversion
+./iso-converter.sh debian.iso /output/directory
+
+# Specify Compression Level
+./iso-converter.sh debian.iso /output/directory --compression maximum
+
+# Specify Virtualization Platform
+./iso-converter.sh debian.iso /output/directory --platform vmware
 ```
 
-### Workflow
-1. System Dependency Check
-2. Package Customization
-   - Add/Remove packages
-3. Kernel Selection
-   - Choose which kernels to include
-4. ISO Generation
+### Advanced Options
+```bash
+# Enable Network Boot Configuration
+./iso-converter.sh debian.iso /output/directory --network-boot
+
+# Prepare Secure Boot Compatibility
+./iso-converter.sh debian.iso /output/directory --secure-boot
+```
+
+## Compression Strategies
+1. **Fast**: Minimal compression, maximum speed
+2. **Standard**: Balanced compression and performance
+3. **Maximum**: Highest compression rates, slower processing
+
+## Virtualization Platforms
+- VMware
+- Hyper-V (Experimental)
 
 ## Logging
-
-- Detailed logs are stored in `/var/log/blackarch-iso-builder-TIMESTAMP.log`
-- Provides comprehensive error tracking and system information
-
-## Advanced Configuration
-
-### Kernel Selection
-- Select multiple kernels for inclusion
-- Supports LTS, ZEN, and standard kernel variants
-
-### Package Management
-- Interactive package addition/removal
-- Flexible customization options
-
-## Troubleshooting
-
-### Common Issues
-- **Dependency Errors**: Ensure all required packages are installed
-- **Kernel Selection**: Verify kernel files exist in `/boot`
-- **ISO Generation**: Check system resources and disk space
-
-### Error Codes
-- Detailed error messages in log files
-- Specific error codes for precise issue identification
-
-## Security Considerations
-- Runs with strict error handling
-- Minimal system modifications
-- Temporary build directories automatically cleaned
-
-## Performance Optimization
-- Uses `xz` compression for minimal ISO size
-- Supports multiple kernel configurations
-- Efficient squashfs generation
-
-## Contribution
-
-Contributions are welcome! Please submit pull requests or open issues on the project repository.
-
-## Disclaimer
-
-This script is provided "AS IS" without warranty. Always backup your system before generating custom ISOs.
-
-## Contact
-
-For support, please open an issue on the project repository.
+Conversion logs are stored in `/var/log/iso-converter/`
