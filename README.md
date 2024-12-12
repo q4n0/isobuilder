@@ -32,14 +32,14 @@ This utility provides a robust, production-grade solution for creating custom Li
 1. Clone the repository or download the script
 2. Make the script executable:
    ```bash
-   chmod +x archisobuilder.sh
+   chmod +x archisobuilder
    ```
 
 ## Usage
 
 ### Basic Usage
 ```bash
-./archisobuilder.sh
+sudo ./archisobuilder
 ```
 
 ### Workflow
