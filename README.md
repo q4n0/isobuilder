@@ -1,94 +1,108 @@
-# Advanced Linux ISO Conversion Utility
+# ISOBuilder: Advanced Linux Distribution Management Utility
 
 ## Overview
-An advanced, production-grade tool for converting Linux distributions to compressed, virtualization-ready ISOs with enhanced features.
 
-## Creator
-- **Name:** b0urn3
-- **GitHub:** q4n0
-- **Instagram:** onlybyhive
+ISOBuilder is a powerful, flexible bash utility designed for advanced Linux distribution ISO manipulation, customization, and management. With robust features for network booting, secure boot preparation, and distribution-aware processing, ISOBuilder simplifies complex ISO management tasks.
 
 ## Features
-- Multi-distribution support (Debian, Arch, Ubuntu, Fedora)
-- Advanced compression strategies
-- Virtualization platform conversion
-- Network boot configuration
-- Secure boot preparation
-- Machine learning-inspired compression optimization
+
+- 🔒 **Root Permission Validation**
+- 🛡️ **Comprehensive Dependency Checking**
+- 🔍 **Automatic Distribution Detection**
+- 🗜️ **Adaptive Compression Strategies**
+- 🌐 **Network Boot Configuration Generation**
+- 🔐 **Secure Boot Certificate Creation**
 
 ## Prerequisites
-### Required Dependencies
-- xorriso
+
+### System Requirements
+- Linux-based Operating System
+- Bash 4.0+
+- Root/Sudo Access
+
+### Required Packages
+- xorriso (libisoburn)
 - squashfs-tools
 - rsync
 - qemu-utils
-- tar
-- xz-utils
 - openssl
-- gnupg
-
-### Supported Linux Distributions
-- Debian
-- Arch Linux
-- Ubuntu
-- Fedora
 
 ## Installation
 
 ### Manual Installation
 ```bash
 # Clone the repository
-git clone https://github.com/q4n0/isobuilder
-# Enter directory
-cd isobuilder
+git clone https://github.com/q4n0/isobuilder.git
+
 # Make the script executable
-chmod +x iso-converter.sh
+chmod +x isobuilder/isobuilder.sh
 
-# Optional: Install system-wide
-sudo mkdir -p /usr/local/bin
-sudo cp iso-converter.sh /usr/local/bin/iso-converter
-```
-
-### Dependency Installation
-```bash
-# Debian/Ubuntu
-sudo apt-get install xorriso squashfs-tools rsync qemu-utils tar xz-utils openssl gnupg
-
-# Arch Linux
-sudo pacman -S libisoburn squashfs-tools rsync qemu-img tar xz openssl gnupg
+# Optional: Add to system path
+sudo ln -s $(pwd)/isobuilder/isobuilder.sh /usr/local/bin/isobuilder
 ```
 
 ## Usage
 
-### Basic Conversion
+### Basic Usage
 ```bash
-# Standard Conversion
-./iso-converter.sh debian.iso /output/directory
-
-# Specify Compression Level
-./iso-converter.sh debian.iso /output/directory --compression maximum
-
-# Specify Virtualization Platform
-./iso-converter.sh debian.iso /output/directory --platform vmware
+# Basic ISO customization
+sudo ./isobuilder.sh -i input.iso -o /path/to/output
 ```
 
 ### Advanced Options
 ```bash
-# Enable Network Boot Configuration
-./iso-converter.sh debian.iso /output/directory --network-boot
+# Get help
+./isobuilder.sh --help
 
-# Prepare Secure Boot Compatibility
-./iso-converter.sh debian.iso /output/directory --secure-boot
+# Show version
+./isobuilder.sh --version
 ```
 
-## Compression Strategies
-1. **Fast**: Minimal compression, maximum speed
-2. **Standard**: Balanced compression and performance
-3. **Maximum**: Highest compression rates, slower processing
+## Configuration
 
-## Virtualization Platforms
-- VMware
-- Hyper-V (Experimental)
+The tool uses a flexible configuration system. Key parameters can be modified directly in the script:
+
+```bash
+declare -A CONFIG=(
+    [ROOT_CHECK_ENABLED]="true"
+    [MAX_ISO_SIZE_GB]="10"
+    [DEFAULT_COMPRESSION]="zstd"
+    [NETWORK_BOOT_SUPPORT]="true"
+    [SECURE_BOOT_ENABLED]="true"
+    [DEBUG_MODE]="false"
+)
+```
 
 ## Logging
-Conversion logs are stored in `/var/log/iso-converter/`
+
+Logs are stored in `/var/log/isobuilder/isobuilder.log` with color-coded console output.
+
+## Supported Distributions
+- Debian/Ubuntu
+- Arch Linux/Manjaro
+- Fedora/CentOS/RHEL
+
+## Security Considerations
+- Requires root permissions
+- Validates all dependencies
+- Generates secure boot certificates
+- Implements strict error handling
+
+## Troubleshooting
+- Ensure all dependencies are installed
+- Check log files for detailed error information
+- Run with `DEBUG_MODE="true"` for verbose output
+
+## Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+MIT License
+
+## Author
+b0urn3
+Ig: onlybyhive
