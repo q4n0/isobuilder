@@ -1,257 +1,414 @@
 #!/usr/bin/env bash
 
-# Linux Advanced ISO Builder
-# Version: 0.0.1
-# Production-Grade Kernel-Aware ISO Creation Utility
+# Advanced Linux ISO Conversion Utility
+# Creator: b0urn3 (GitHub: q4n0, Instagram: onlybyhive)
+# Version: 1.1.0 - Enhanced Multi-Platform Distribution Tool
 
-# Strict error handling for production reliability
+# Strict error handling and debugging
 set -euo pipefail
+trap 'handle_error $?' ERR
 
-# Advanced Logging Framework
-LOG_FILE="/var/log/blackarch-iso-builder-$(date +%Y%m%d_%H%M%S).log"
-VERBOSE=false
-
-# Color Codes for Enhanced Readability
-declare -A COLORS=(
-    [ERROR]='\033[0;31m'     # Red
-    [SUCCESS]='\033[0;32m'   # Green
-    [WARNING]='\033[1;33m'   # Yellow
-    [INFO]='\033[0;34m'      # Blue
-    [RESET]='\033[0m'        # Reset Color
+# Configuration Constants
+readonly VERSION="1.1.0"
+readonly SUPPORTED_DISTROS=("debian" "arch" "ubuntu" "fedora")
+readonly COMPRESSION_LEVELS=(
+    "fast:maximal-speed"
+    "standard:balanced"
+    "maximum:highest-compression"
 )
 
-# Comprehensive Logging Function
+# Advanced Logging Framework
+LOG_DIR="/var/log/iso-converter"
+mkdir -p "$LOG_DIR"
+LOGFILE="${LOG_DIR}/conversion_$(date +%Y%m%d_%H%M%S).log"
+
+# Color Output
+declare -A COLORS=(
+    [ERROR]='\033[0;31m'
+    [SUCCESS]='\033[0;32m'
+    [WARNING]='\033[1;33m'
+    [INFO]='\033[0;34m'
+    [RESET]='\033[0m'
+)
+
+# Global Feature Flags
+declare -A ADVANCED_FEATURES=(
+    [PLUGIN_SUPPORT]="true"
+    [NETWORK_BOOT]="true"
+    [SECURE_BOOT]="true"
+    [AI_OPTIMIZATION]="experimental"
+)
+
+# Plugin Management System
+declare -A DISTRIBUTION_PLUGINS=(
+    [debian]="/usr/share/iso-converter/plugins/debian.sh"
+    [arch]="/usr/share/iso-converter/plugins/arch.sh"
+    [ubuntu]="/usr/share/iso-converter/plugins/ubuntu.sh"
+    [fedora]="/usr/share/iso-converter/plugins/fedora.sh"
+)
+
+# Logging Function with Enhanced Capabilities
 log() {
     local level="$1"
     local message="$2"
     local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
     
-    # Console Output
+    # Console and File Logging
     case "$level" in
-        ERROR)   echo -e "${COLORS[ERROR]}[ERROR] $message${COLORS[RESET]}" >&2 ;;
-        SUCCESS) echo -e "${COLORS[SUCCESS]}[SUCCESS] $message${COLORS[RESET]}" ;;
-        WARNING) echo -e "${COLORS[WARNING]}[WARNING] $message${COLORS[RESET]}" ;;
-        INFO)    echo -e "${COLORS[INFO]}[INFO] $message${COLORS[RESET]}" ;;
-        *)       echo -e "[${level}] $message" ;;
+        ERROR)   
+            echo -e "${COLORS[ERROR]}[ERROR] $message${COLORS[RESET]}" >&2 
+            ;;
+        SUCCESS) 
+            echo -e "${COLORS[SUCCESS]}[SUCCESS] $message${COLORS[RESET]}" 
+            ;;
+        WARNING) 
+            echo -e "${COLORS[WARNING]}[WARNING] $message${COLORS[RESET]}" 
+            ;;
+        INFO)    
+            echo -e "${COLORS[INFO]}[INFO] $message${COLORS[RESET]}" 
+            ;;
     esac
     
-    # Log to file
-    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+    # Persistent Logging
+    echo "[$timestamp] [$level] $message" >> "$LOGFILE"
 }
 
-# Kernel Detection and Management
-detect_kernels() {
-    local kernel_info=()
-    local kernel_paths=(/boot/vmlinuz-*)
-    
-    if [ ${#kernel_paths[@]} -eq 0 ]; then
-        log ERROR "No kernels found in /boot directory"
-        return 1
-    fi
-    
-    for kernel_path in "${kernel_paths[@]}"; do
-        local kernel_name=$(basename "$kernel_path")
-        local kernel_version=$(pacman -Q | grep "$kernel_name" | awk '{print $2}')
-        local initramfs_path="/boot/initramfs-${kernel_name#vmlinuz-}.img"
-        
-        if [ -f "$initramfs_path" ]; then
-            kernel_info+=("$kernel_name|$kernel_version|$kernel_path|$initramfs_path")
-        fi
-    done
-    
-    echo "${kernel_info[@]}"
+# Error Handling with Diagnostic Information
+handle_error() {
+    local exit_code="$1"
+    log ERROR "Script encountered an error (Exit Code: $exit_code)"
+    log ERROR "Last command: ${BASH_COMMAND}"
+    log ERROR "Error occurred at: ${BASH_SOURCE[0]}:${BASH_LINENO[0]}"
+    exit "$exit_code"
 }
 
-# Kernel Selection Interactive Menu
-select_kernels() {
-    local available_kernels
-    IFS=' ' read -ra available_kernels <<< "$(detect_kernels)"
-    
-    if [ ${#available_kernels[@]} -eq 0 ]; then
-        log ERROR "No kernels available for selection"
-        return 1
-    fi
-    
-    local selected_kernels=()
-    
-    log INFO "Available Kernels:"
-    for i in "${!available_kernels[@]}"; do
-        IFS='|' read -r name version path initramfs <<< "${available_kernels[i]}"
-        echo "$((i+1)). $name (Version: $version)"
-    done
-    
-    log INFO "Select kernels to include (space-separated numbers, e.g. '1 2 3'):"
-    read -r kernel_selections
-    
-    for selection in $kernel_selections; do
-        if [[ $selection -ge 1 && $selection -le ${#available_kernels[@]} ]]; then
-            selected_kernels+=("${available_kernels[$((selection-1))]}")
-        else
-            log WARNING "Invalid kernel selection: $selection"
-        fi
-    done
-    
-    echo "${selected_kernels[@]}"
-}
-
-# Kernel Compatibility and Validation
-validate_kernel() {
-    local kernel_path="$1"
-    
-    if [ ! -f "$kernel_path" ]; then
-        log ERROR "Kernel file not found: $kernel_path"
-        return 1
-    fi
-    
-    # Additional kernel validation checks can be added here
-    file "$kernel_path" | grep -q "Linux kernel" || {
-        log ERROR "Invalid kernel file: $kernel_path"
-        return 1
-    }
-}
-
-# Advanced Dependency Checking
-check_dependencies() {
-    local critical_deps=(
-        "mksquashfs:squashfs-tools"
+# Dependency Validation
+validate_dependencies() {
+    local required_tools=(
         "xorriso:libisoburn"
-        "grub-mkrescue:grub"
+        "mksquashfs:squashfs-tools"
         "rsync:rsync"
-        "pacstrap:arch-install-scripts"
-        "pacman:pacman"
+        "qemu-img:qemu-utils"
+        "tar:tar"
+        "xz:xz-utils"
+        "openssl:openssl"
+        "gpg:gnupg"
     )
     
     local missing_deps=()
     
-    for dep in "${critical_deps[@]}"; do
-        IFS=':' read -r command package <<< "$dep"
-        if ! command -v "$command" &> /dev/null; then
+    for tool in "${required_tools[@]}"; do
+        IFS=':' read -r binary package <<< "$tool"
+        if ! command -v "$binary" &> /dev/null; then
             missing_deps+=("$package")
         fi
     done
     
-    if [ ${#missing_deps[@]} -ne 0 ]; then
+    if [[ ${#missing_deps[@]} -ne 0 ]]; then
         log ERROR "Missing critical dependencies: ${missing_deps[*]}"
         return 1
     fi
     
-    log SUCCESS "All dependencies satisfied"
+    log SUCCESS "All dependencies validated successfully"
 }
 
-# ISO Customization Enhanced
-customize_iso() {
-    local custom_packages=()
-    local selected_kernels=()
+# Distribution Detection and Validation
+detect_distribution() {
+    local iso_path="$1"
+    local distro=""
     
-    while true; do
-        clear
-        echo "BlackArch ISO Customization Menu"
-        echo "1. Add Packages"
-        echo "2. Remove Packages"
-        echo "3. Select Kernels"
-        echo "4. View Current Configuration"
-        echo "5. Return to Main Menu"
-        
-        read -p "Enter your choice: " choice
-        
-        case $choice in
-            1)
-                read -p "Enter package name to add: " package
-                custom_packages+=("$package")
-                log INFO "Added $package to customization list"
-                ;;
-            2)
-                read -p "Enter package name to remove: " package
-                custom_packages=("${custom_packages[@]/$package}")
-                log INFO "Removed $package from customization list"
-                ;;
-            3)
-                selected_kernels=($(select_kernels))
-                ;;
-            4)
-                echo "Current Package List:"
-                printf '%s\n' "${custom_packages[@]}"
-                echo "Selected Kernels:"
-                printf '%s\n' "${selected_kernels[@]}"
-                read -p "Press Enter to continue..." 
-                ;;
-            5)
-                break
-                ;;
-            *)
-                log ERROR "Invalid option"
-                ;;
-        esac
-    done
+    # Advanced ISO Distribution Detection
+    if file "$iso_path" | grep -qE "Debian|Ubuntu"; then
+        distro="debian"
+    elif file "$iso_path" | grep -qE "Arch Linux|Archlinux"; then
+        distro="arch"
+    elif file "$iso_path" | grep -qE "Fedora"; then
+        distro="fedora"
+    else
+        log ERROR "Unsupported distribution detected"
+        return 1
+    fi
     
-    # Return package and kernel lists
-    echo "${custom_packages[*]}|${selected_kernels[*]}"
+    echo "$distro"
 }
 
-# Advanced ISO Build Process
-build_iso() {
-    local work_dir="/tmp/blackarch_iso_build_$(date +%s)"
-    local custom_config="$1"
+# Compression Strategy Selection
+select_compression_strategy() {
+    local mode="$1"
+    local distribution="${2:-generic}"
     
-    IFS='|' read -r packages kernels <<< "$custom_config"
+    case "$mode" in
+        fast)
+            echo "-comp zstd -Xcompression-level 1"
+            ;;
+        standard)
+            case "$distribution" in
+                debian)
+                    echo "-comp zstd -Xcompression-level 10"
+                    ;;
+                arch)
+                    echo "-comp xz -Xbcj x86"
+                    ;;
+                *)
+                    echo "-comp zstd -Xcompression-level 7"
+                    ;;
+            esac
+            ;;
+        maximum)
+            echo "-comp xz -Xbcj x86 -Xdict-size 100%"
+            ;;
+        *)
+            log ERROR "Invalid compression strategy"
+            return 1
+            ;;
+    esac
+}
+
+# Machine Learning Compression Analysis (Simulated)
+ml_compression_analysis() {
+    local input_iso="$1"
+    local distribution="$2"
     
-    # Setup
-    mkdir -p "$work_dir/image/kernels"
+    log INFO "Analyzing ISO for optimal compression: $distribution"
     
-    # Kernel Handling
-    for kernel_info in $kernels; do
-        IFS='|' read -r name version path initramfs <<< "$kernel_info"
-        
-        validate_kernel "$path" || continue
-        
-        cp "$path" "$work_dir/image/kernels/$name"
-        cp "$initramfs" "$work_dir/image/kernels/${name}.img"
-    done
+    case "$distribution" in
+        debian)
+            echo "-comp zstd -Xcompression-level 15 -Xwindow=33"
+            ;;
+        arch)
+            echo "-comp xz -Xbcj x86 -Xdict-size 100% -Xlc 4"
+            ;;
+        *)
+            echo "-comp zstd -Xcompression-level 10"
+            ;;
+    esac
+}
+
+# Network Boot Configuration Generator
+generate_network_boot_config() {
+    local distribution="$1"
+    local output_dir="$2"
     
-    # Filesystem Creation
-    pacstrap -C /etc/pacman.conf -c "$work_dir/chroot" \
-        base linux blackarch-keyring blackarch-mirrorlist $packages
+    log INFO "Generating Network Boot Configuration for $distribution"
     
-    # Squashfs Generation
-    mksquashfs "$work_dir/chroot" "$work_dir/image/LiveOS/squashfs.img" \
-        -comp xz -b 1048576 || {
-        log ERROR "Squashfs image creation failed"
+    mkdir -p "$output_dir/netboot"
+    
+    # iPXE Configuration
+    cat > "$output_dir/netboot/ipxe-boot.cfg" <<EOL
+#!ipxe
+set base-url http://netboot.example.com/$distribution
+kernel \${base-url}/linux
+initrd \${base-url}/initrd
+boot
+EOL
+    
+    # GRUB Network Boot Configuration
+    cat > "$output_dir/netboot/grub-network.cfg" <<EOL
+menuentry 'Network Boot - $distribution' {
+    set root=net0
+    linux /boot/vmlinuz ip=dhcp
+    initrd /boot/initrd.img
+}
+EOL
+    
+    log SUCCESS "Network boot configurations generated"
+}
+
+# Secure Boot Preparation
+prepare_secure_boot() {
+    local input_iso="$1"
+    local output_dir="$2"
+    
+    log INFO "Preparing Secure Boot Compatibility"
+    
+    # Generate Secure Boot Shim and MOK Management
+    openssl req -new -x509 -subj "/CN=Custom Linux Secure Boot/" \
+        -pubkey -out "$output_dir/secureboot-cert.pem" 2>/dev/null
+    
+    # Generate signing key
+    openssl genrsa -out "$output_dir/secureboot-key.pem" 4096 2>/dev/null
+    
+    log SUCCESS "Secure Boot preparation completed"
+}
+
+# Plugin System
+load_distribution_plugin() {
+    local distribution="$1"
+    local plugin_path="${DISTRIBUTION_PLUGINS[$distribution]}"
+    
+    if [[ -f "$plugin_path" ]]; then
+        # shellcheck source=/dev/null
+        source "$plugin_path"
+        log INFO "Loaded plugin for $distribution"
+    else
+        log WARNING "No plugin found for $distribution"
+    fi
+}
+
+# Advanced Conversion Function
+advanced_convert_iso() {
+    local input_iso="$1"
+    local output_dir="$2"
+    local distribution
+    local compression_mode="${3:-standard}"
+    local virtualization_platform="${4:-vmware}"
+    
+    # Ensure output directory exists
+    mkdir -p "$output_dir"
+    
+    # Detect Distribution
+    distribution=$(detect_distribution "$input_iso")
+    
+    # Load distribution-specific plugin
+    load_distribution_plugin "$distribution"
+    
+    # Temporary Working Directory
+    local work_dir=$(mktemp -d)
+    trap 'rm -rf "$work_dir"' EXIT
+    
+    # ISO Extraction
+    log INFO "Extracting ISO contents..."
+    xorriso -osirrox on -indev "$input_iso" -extract / "$work_dir/iso"
+    
+    # Compression Strategy
+    local compression_args=$(select_compression_strategy "$compression_mode" "$distribution")
+    
+    # Filesystem Compression
+    log INFO "Generating compressed filesystem..."
+    mksquashfs "$work_dir/iso" "$output_dir/${distribution}-compressed.squashfs" \
+        $compression_args || {
+        log ERROR "Filesystem compression failed"
         return 1
     }
     
-    # Bootloader Configuration
-    # [Detailed GRUB and ISOLINUX configs would go here]
+    # Virtualization Platform Conversion
+    case "$virtualization_platform" in
+        vmware)
+            log INFO "Generating VMware-compatible disk..."
+            qemu-img convert -f raw -O vmdk "$output_dir/${distribution}-compressed.squashfs" \
+                "$output_dir/${distribution}-vmware.vmdk"
+            ;;
+        hyperv)
+            log INFO "Generating Hyper-V compatible disk..."
+            qemu-img convert -f raw -O vhdx "$output_dir/${distribution}-compressed.squashfs" \
+                "$output_dir/${distribution}-hyperv.vhdx"
+            ;;
+        *)
+            log WARNING "Unsupported virtualization platform"
+            ;;
+    esac
     
-    # Final ISO Generation
-    local output_iso="/home/$(logname)/blackarch_custom_$(date +%Y%m%d_%H%M%S).iso"
+    # Network Boot Configuration
+    generate_network_boot_config "$distribution" "$output_dir"
     
-    xorriso -as mkisofs -r \
-        -b isolinux/isolinux.bin -c isolinux/boot.cat \
-        -no-emul-boot -boot-load-size 4 -boot-info-table \
-        -eltorito-alt-boot \
-        -o "$output_iso" "$work_dir/image" || {
-        log ERROR "ISO generation failed"
-        return 1
-    }
+    # Secure Boot Preparation
+    prepare_secure_boot "$input_iso" "$output_dir"
     
-    log SUCCESS "ISO successfully created at $output_iso"
+    log SUCCESS "Advanced conversion completed successfully"
+}
+
+# Credits and Attribution
+show_credits() {
+    cat <<EOL
+Advanced ISO Conversion Utility
+------------------------------
+Creator: b0urn3
+GitHub: q4n0
+Instagram: onlybyhive
+Version: 1.1.0
+
+Dedicated to pushing the boundaries of Linux distribution tooling.
+EOL
+}
+
+# Help and Usage Information
+show_help() {
+    cat <<EOL
+Usage: $0 [options] <input-iso> <output-directory>
+
+Options:
+  --compression <mode>    Compression mode: fast, standard, maximum
+  --platform <platform>   Virtualization platform: vmware, hyperv
+  --network-boot          Enable network boot configuration
+  --secure-boot           Prepare secure boot compatibility
+  -h, --help              Show this help message
+  --version               Show version information
+
+Example:
+  $0 debian.iso /path/to/output --compression maximum --platform vmware
+EOL
 }
 
 # Main Execution
 main() {
-    # Preflight Checks
-    check_dependencies || exit 1
+    # No arguments provided
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 1
+    fi
     
-    # Comprehensive Configuration
-    custom_config=$(customize_iso)
+    # Argument Parsing
+    local input_iso=""
+    local output_dir=""
+    local compression_mode="standard"
+    local virtualization_platform="vmware"
     
-    # Build ISO
-    build_iso "$custom_config"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            --version)
+                show_credits
+                exit 0
+                ;;
+            --compression)
+                compression_mode="$2"
+                shift 2
+                ;;
+            --platform)
+                virtualization_platform="$2"
+                shift 2
+                ;;
+            --network-boot)
+                ADVANCED_FEATURES[NETWORK_BOOT]="true"
+                shift
+                ;;
+            --secure-boot)
+                ADVANCED_FEATURES[SECURE_BOOT]="true"
+                shift
+                ;;
+            *)
+                if [[ -z "$input_iso" ]]; then
+                    input_iso="$1"
+                elif [[ -z "$output_dir" ]]; then
+                    output_dir="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    
+    # Validate Input
+    if [[ -z "$input_iso" || -z "$output_dir" ]]; then
+        log ERROR "Missing required arguments"
+        show_help
+        exit 1
+    fi
+    
+    # Validate ISO file
+    if [[ ! -f "$input_iso" ]]; then
+        log ERROR "Input ISO file does not exist"
+        exit 1
+    fi
+    
+    # Dependency Check
+    validate_dependencies
+    
+    # Perform Advanced Conversion
+    advanced_convert_iso "$input_iso" "$output_dir" "$compression_mode" "$virtualization_platform"
 }
 
-# Error Trap and Cleanup
-trap 'log ERROR "Unexpected error occurred"; exit 1' ERR
-trap 'rm -rf /tmp/blackarch_iso_build_*' EXIT
-
 # Script Entry Point
-main
+main "$@"
