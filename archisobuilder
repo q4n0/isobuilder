@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+
+# Linux Advanced ISO Builder
+# Version: 0.0.1
+# Production-Grade Kernel-Aware ISO Creation Utility
+
+# Strict error handling for production reliability
+set -euo pipefail
+
+# Advanced Logging Framework
+LOG_FILE="/var/log/blackarch-iso-builder-$(date +%Y%m%d_%H%M%S).log"
+VERBOSE=false
+
+# Color Codes for Enhanced Readability
+declare -A COLORS=(
+    [ERROR]='\033[0;31m'     # Red
+    [SUCCESS]='\033[0;32m'   # Green
+    [WARNING]='\033[1;33m'   # Yellow
+    [INFO]='\033[0;34m'      # Blue
+    [RESET]='\033[0m'        # Reset Color
+)
+
+# Comprehensive Logging Function
+log() {
+    local level="$1"
+    local message="$2"
+    local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+    
+    # Console Output
+    case "$level" in
+        ERROR)   echo -e "${COLORS[ERROR]}[ERROR] $message${COLORS[RESET]}" >&2 ;;
+        SUCCESS) echo -e "${COLORS[SUCCESS]}[SUCCESS] $message${COLORS[RESET]}" ;;
+        WARNING) echo -e "${COLORS[WARNING]}[WARNING] $message${COLORS[RESET]}" ;;
+        INFO)    echo -e "${COLORS[INFO]}[INFO] $message${COLORS[RESET]}" ;;
+        *)       echo -e "[${level}] $message" ;;
+    esac
+    
+    # Log to file
+    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+}
+
+# Kernel Detection and Management
+detect_kernels() {
+    local kernel_info=()
+    local kernel_paths=(/boot/vmlinuz-*)
+    
+    if [ ${#kernel_paths[@]} -eq 0 ]; then
+        log ERROR "No kernels found in /boot directory"
+        return 1
+    fi
+    
+    for kernel_path in "${kernel_paths[@]}"; do
+        local kernel_name=$(basename "$kernel_path")
+        local kernel_version=$(pacman -Q | grep "$kernel_name" | awk '{print $2}')
+        local initramfs_path="/boot/initramfs-${kernel_name#vmlinuz-}.img"
+        
+        if [ -f "$initramfs_path" ]; then
+            kernel_info+=("$kernel_name|$kernel_version|$kernel_path|$initramfs_path")
+        fi
+    done
+    
+    echo "${kernel_info[@]}"
+}
+
+# Kernel Selection Interactive Menu
+select_kernels() {
+    local available_kernels
+    IFS=' ' read -ra available_kernels <<< "$(detect_kernels)"
+    
+    if [ ${#available_kernels[@]} -eq 0 ]; then
+        log ERROR "No kernels available for selection"
+        return 1
+    fi
+    
+    local selected_kernels=()
+    
+    log INFO "Available Kernels:"
+    for i in "${!available_kernels[@]}"; do
+        IFS='|' read -r name version path initramfs <<< "${available_kernels[i]}"
+        echo "$((i+1)). $name (Version: $version)"
+    done
+    
+    log INFO "Select kernels to include (space-separated numbers, e.g. '1 2 3'):"
+    read -r kernel_selections
+    
+    for selection in $kernel_selections; do
+        if [[ $selection -ge 1 && $selection -le ${#available_kernels[@]} ]]; then
+            selected_kernels+=("${available_kernels[$((selection-1))]}")
+        else
+            log WARNING "Invalid kernel selection: $selection"
+        fi
+    done
+    
+    echo "${selected_kernels[@]}"
+}
+
+# Kernel Compatibility and Validation
+validate_kernel() {
+    local kernel_path="$1"
+    
+    if [ ! -f "$kernel_path" ]; then
+        log ERROR "Kernel file not found: $kernel_path"
+        return 1
+    fi
+    
+    # Additional kernel validation checks can be added here
+    file "$kernel_path" | grep -q "Linux kernel" || {
+        log ERROR "Invalid kernel file: $kernel_path"
+        return 1
+    }
+}
+
+# Advanced Dependency Checking
+check_dependencies() {
+    local critical_deps=(
+        "mksquashfs:squashfs-tools"
+        "xorriso:libisoburn"
+        "grub-mkrescue:grub"
+        "rsync:rsync"
+        "pacstrap:arch-install-scripts"
+        "pacman:pacman"
+    )
+    
+    local missing_deps=()
+    
+    for dep in "${critical_deps[@]}"; do
+        IFS=':' read -r command package <<< "$dep"
+        if ! command -v "$command" &> /dev/null; then
+            missing_deps+=("$package")
+        fi
+    done
+    
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        log ERROR "Missing critical dependencies: ${missing_deps[*]}"
+        return 1
+    fi
+    
+    log SUCCESS "All dependencies satisfied"
+}
+
+# ISO Customization Enhanced
+customize_iso() {
+    local custom_packages=()
+    local selected_kernels=()
+    
+    while true; do
+        clear
+        echo "BlackArch ISO Customization Menu"
+        echo "1. Add Packages"
+        echo "2. Remove Packages"
+        echo "3. Select Kernels"
+        echo "4. View Current Configuration"
+        echo "5. Return to Main Menu"
+        
+        read -p "Enter your choice: " choice
+        
+        case $choice in
+            1)
+                read -p "Enter package name to add: " package
+                custom_packages+=("$package")
+                log INFO "Added $package to customization list"
+                ;;
+            2)
+                read -p "Enter package name to remove: " package
+                custom_packages=("${custom_packages[@]/$package}")
+                log INFO "Removed $package from customization list"
+                ;;
+            3)
+                selected_kernels=($(select_kernels))
+                ;;
+            4)
+                echo "Current Package List:"
+                printf '%s\n' "${custom_packages[@]}"
+                echo "Selected Kernels:"
+                printf '%s\n' "${selected_kernels[@]}"
+                read -p "Press Enter to continue..." 
+                ;;
+            5)
+                break
+                ;;
+            *)
+                log ERROR "Invalid option"
+                ;;
+        esac
+    done
+    
+    # Return package and kernel lists
+    echo "${custom_packages[*]}|${selected_kernels[*]}"
+}
+
+# Advanced ISO Build Process
+build_iso() {
+    local work_dir="/tmp/blackarch_iso_build_$(date +%s)"
+    local custom_config="$1"
+    
+    IFS='|' read -r packages kernels <<< "$custom_config"
+    
+    # Setup
+    mkdir -p "$work_dir/image/kernels"
+    
+    # Kernel Handling
+    for kernel_info in $kernels; do
+        IFS='|' read -r name version path initramfs <<< "$kernel_info"
+        
+        validate_kernel "$path" || continue
+        
+        cp "$path" "$work_dir/image/kernels/$name"
+        cp "$initramfs" "$work_dir/image/kernels/${name}.img"
+    done
+    
+    # Filesystem Creation
+    pacstrap -C /etc/pacman.conf -c "$work_dir/chroot" \
+        base linux blackarch-keyring blackarch-mirrorlist $packages
+    
+    # Squashfs Generation
+    mksquashfs "$work_dir/chroot" "$work_dir/image/LiveOS/squashfs.img" \
+        -comp xz -b 1048576 || {
+        log ERROR "Squashfs image creation failed"
+        return 1
+    }
+    
+    # Bootloader Configuration
+    # [Detailed GRUB and ISOLINUX configs would go here]
+    
+    # Final ISO Generation
+    local output_iso="/home/$(logname)/blackarch_custom_$(date +%Y%m%d_%H%M%S).iso"
+    
+    xorriso -as mkisofs -r \
+        -b isolinux/isolinux.bin -c isolinux/boot.cat \
+        -no-emul-boot -boot-load-size 4 -boot-info-table \
+        -eltorito-alt-boot \
+        -o "$output_iso" "$work_dir/image" || {
+        log ERROR "ISO generation failed"
+        return 1
+    }
+    
+    log SUCCESS "ISO successfully created at $output_iso"
+}
+
+# Main Execution
+main() {
+    # Preflight Checks
+    check_dependencies || exit 1
+    
+    # Comprehensive Configuration
+    custom_config=$(customize_iso)
+    
+    # Build ISO
+    build_iso "$custom_config"
+}
+
+# Error Trap and Cleanup
+trap 'log ERROR "Unexpected error occurred"; exit 1' ERR
+trap 'rm -rf /tmp/blackarch_iso_build_*' EXIT
+
+# Script Entry Point
+main
