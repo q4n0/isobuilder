@@ -24,7 +24,7 @@ log() {
 # Validate dependencies
 validate_dependencies() {
     log "Validating dependencies..."
-    local dependencies=(genisoimage squashfs-tools rsync mount umount)
+    local dependencies=(xorriso squashfs-tools rsync mount umount)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             log "Error: $dep is not installed. Exiting." >&2
@@ -130,11 +130,16 @@ customize_iso() {
 create_iso() {
     log "Creating new ISO..."
 
-    genisoimage -o "$OUTPUT_ISO" -R -J "$CUSTOM_ISO_DIR"/
-    if [ $? -eq 0 ]; then
-        log "ISO created successfully: $OUTPUT_ISO"
+    if command -v xorriso &> /dev/null; then
+        xorriso -as mkisofs -o "$OUTPUT_ISO" -R -J "$CUSTOM_ISO_DIR"/
+        if [ $? -eq 0 ]; then
+            log "ISO created successfully: $OUTPUT_ISO"
+        else
+            log "Error: Failed to create ISO. Exiting." >&2
+            exit 1
+        fi
     else
-        log "Error: Failed to create ISO. Exiting." >&2
+        log "Error: xorriso is not installed. Please install it using 'sudo pacman -S xorriso'." >&2
         exit 1
     fi
 }
