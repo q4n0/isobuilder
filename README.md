@@ -38,8 +38,9 @@ An advanced, production-grade tool for converting Linux distributions to compres
 ### Manual Installation
 ```bash
 # Clone the repository
-git clone https://github.com/q4n0/iso-converter.git
-
+git clone https://github.com/q4n0/isobuilder
+# Enter directory
+cd isobuilder
 # Make the script executable
 chmod +x iso-converter.sh
 
